@@ -1,13 +1,11 @@
-﻿using Editor.MapEditor;
-using Sandbox;
-using static Editor.BaseItemWidget;
+﻿using static Editor.BaseItemWidget;
 namespace Editor;
 
 partial class GameObjectNode : TreeNode<GameObject>
 {
 	public GameObjectNode( GameObject o ) : base( o )
 	{
-		Height = 19;
+		Height = Theme.RowHeight;
 	}
 
 	public override string Name
@@ -232,7 +230,7 @@ partial class GameObjectNode : TreeNode<GameObject>
 		{
 			//item.PaintBackground( Color.Transparent, 3 );
 			Paint.ClearPen();
-			Paint.SetBrush( Theme.Blue.WithAlpha( 0.1f * opacity ) );
+			Paint.SetBrush( Theme.SelectedBackground.WithAlpha( opacity ) );
 			Paint.DrawRect( fullSpanRect );
 		}
 		else if ( isEven )
@@ -634,7 +632,7 @@ partial class GameObjectNode : TreeNode<GameObject>
 						{
 							if ( prefabAsset.TryLoadResource<PrefabFile>( out var prefab ) && prefab.IsValid )
 							{
-								// TODO EditorScene.LoadFromPrefab( prefab );
+								EditorScene.OpenPrefab( prefab );
 							}
 						} ).Enabled = !prefabAsset.IsProcedural;
 
