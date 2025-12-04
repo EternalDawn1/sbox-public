@@ -82,7 +82,7 @@ file sealed class GameObjectIconButton : IconButton
 	private Drag _drag;
 
 	public GameObjectIconButton( GameObjectHeader parent )
-		: base( GetCurrentIcon( parent.Target ), null )
+		: base( "📦" )
 	{
 		_parent = parent;
 
@@ -118,7 +118,7 @@ file sealed class GameObjectIconButton : IconButton
 		}
 
 		// Default icon based on children and components
-		return go.Children.Where( x => x.ShouldShowInHierarchy() ).Any() ? "📂" : (go.Components.Count > 0 ? "layers" : "📁");
+		return "📦";
 	}
 
 	private static Color GetCurrentColor( SerializedObject target )
@@ -162,7 +162,7 @@ file sealed class GameObjectIconButton : IconButton
 		{
 			// Prepare new tag values
 			var hasChildren = go.Children.Where( x => x.ShouldShowInHierarchy() ).Any();
-			var defaultIcon = hasChildren ? "folder_open" : (go.Components.Count > 0 ? "layers" : "folder");
+			var defaultIcon = "📦";
 			string newIconTag = selectedIcon != defaultIcon ? IconTagEncoding.EncodeIconToTag( selectedIcon ) : null;
 			string newColorTag = null;
 			if ( selectedColor != Color.White )

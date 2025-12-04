@@ -92,7 +92,7 @@ partial class GameObjectNode : TreeNode<GameObject>
 		if ( !Value.Active ) opacity *= 0.5f;
 
 		Color pen = Theme.TextControl;
-		string icon = Value.Children.Where( x => x.ShouldShowInHierarchy() ).Any() ? "📂" : (Value.Components.Count > 0 ? "layers" : "📁");
+		string icon = "layers";
 		Color iconColor = Theme.TextControl.WithAlpha( 0.6f );
 		Color overlayIconColor = iconColor;
 
