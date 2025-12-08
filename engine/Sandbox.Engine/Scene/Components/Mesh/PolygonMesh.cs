@@ -142,7 +142,7 @@ public sealed partial class PolygonMesh : IJsonConvert
 	/// <summary>
 	/// Has there been changes to the mesh that need rebuilding?
 	/// </summary>
-	public bool IsDirty { get; private set; }
+	public bool IsDirty { get; internal set; }
 
 	private Transform _transform = Transform.Zero;
 
