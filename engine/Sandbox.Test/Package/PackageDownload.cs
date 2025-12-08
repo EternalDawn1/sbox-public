@@ -5,12 +5,6 @@ namespace Packages;
 [TestClass]
 public class PackageDownload
 {
-	[TestInitialize]
-	public void TestInitialize()
-	{
-		PackageManager.ResetForUnitTest();
-	}
-
 	[TestMethod]
 	[DataRow( "facepunch.sandbox" )]
 	[DataRow( "garry.grassworld" )]

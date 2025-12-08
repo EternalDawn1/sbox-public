@@ -234,10 +234,10 @@ public partial class SceneNetworkSystem : GameNetworkSystem
 			LoadingScreen.Title = "Loading Scene";
 		}
 
-		// Go ahead and destroy the scene immediately (if it exists.)
+		// Go ahead and destroy the scene
 		if ( Game.ActiveScene is not null )
 		{
-			Game.ActiveScene?.DestroyImmediate();
+			Game.ActiveScene?.Destroy();
 			Game.ActiveScene = null;
 		}
 
@@ -408,7 +408,7 @@ public partial class SceneNetworkSystem : GameNetworkSystem
 
 		if ( Game.ActiveScene is not null )
 		{
-			Game.ActiveScene?.DestroyImmediate();
+			Game.ActiveScene?.Destroy();
 			Game.ActiveScene = null;
 		}
 

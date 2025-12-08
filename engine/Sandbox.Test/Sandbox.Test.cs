@@ -7,21 +7,18 @@ global using Assert = Microsoft.VisualStudio.TestTools.UnitTesting.Assert;
 [TestClass]
 public class TestInit
 {
+	public static Sandbox.AppSystem TestAppSystem;
+
 	[AssemblyInitialize]
 	public static void ClassInitialize( TestContext context )
 	{
-#if LIVE_UNIT_TEST
-		Sandbox.Application.InitLiveUnitTest<TestInit>();
-#else
-		Sandbox.Application.InitUnitTest<TestInit>();
-#endif
-
+		TestAppSystem = new TestAppSystem();
+		TestAppSystem.Init();
 	}
 
 	[AssemblyCleanup]
 	public static void AssemblyCleanup()
 	{
-		Sandbox.Application.ShutdownUnitTest();
-
+		TestAppSystem.Shutdown();
 	}
 }

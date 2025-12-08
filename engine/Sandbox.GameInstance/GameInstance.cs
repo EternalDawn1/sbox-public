@@ -110,8 +110,8 @@ internal partial class GameInstance : IGameInstance
 
 		if ( activePackage != null && !Application.IsStandalone )
 		{
-			Game.Language.Shutdown();
-			FileSystem.Mounted.UnMount( activePackage.FileSystem );
+			Game.Language?.Shutdown();
+			FileSystem.Mounted?.UnMount( activePackage.FileSystem );
 
 			activePackage = null;
 		}
@@ -121,7 +121,7 @@ internal partial class GameInstance : IGameInstance
 		// Is this the right place for it? Map packages are marked with "game" so they never get unmounted
 		PackageManager.UnmountTagged( "game" );
 
-		GameInstanceDll.Current.OnGameInstanceClosed( this );
+		GameInstanceDll.Current.Shutdown( this );
 
 		Game.Shutdown();
 

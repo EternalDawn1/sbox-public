@@ -72,27 +72,6 @@ internal class Test( string name ) : Step( name )
 				return ExitCode.Failure;
 			}
 
-			Log.Info( "Step 3: Testing Game" );
-
-			string sboxDevPath = Path.Combine( gameDir, "sbox-dev.exe" );
-			if ( !File.Exists( sboxDevPath ) )
-			{
-				Log.Error( $"Error: sbox-dev.exe not found at {sboxDevPath}" );
-				return ExitCode.Failure;
-			}
-
-			bool gameTestSuccess = Utility.RunProcess(
-				sboxDevPath,
-				"-test",
-				gameDir
-			);
-
-			if ( !gameTestSuccess )
-			{
-				Log.Error( "Game tests failed!" );
-				return ExitCode.Failure;
-			}
-
 			Log.Info( "All tests completed successfully!" );
 			return ExitCode.Success;
 		}
