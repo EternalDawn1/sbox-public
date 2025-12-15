@@ -69,7 +69,7 @@ public sealed partial class VertexTool( MeshTool tool ) : SelectionTool<MeshVert
 
 		using var scope = Gizmo.Scope( "VertexTool" );
 
-		var closestVertex = GetClosestVertex( 8 );
+		var closestVertex = MeshTrace.GetClosestVertex( 8 );
 		if ( closestVertex.IsValid() )
 			Gizmo.Hitbox.TrySetHovered( closestVertex.PositionWorld );
 
@@ -93,7 +93,7 @@ public sealed partial class VertexTool( MeshTool tool ) : SelectionTool<MeshVert
 
 	private void SelectVertex()
 	{
-		var vertex = GetClosestVertex( 8 );
+		var vertex = MeshTrace.GetClosestVertex( 8 );
 		if ( vertex.IsValid() )
 		{
 			using ( Gizmo.ObjectScope( vertex.Component.GameObject, vertex.Transform ) )
@@ -112,7 +112,7 @@ public sealed partial class VertexTool( MeshTool tool ) : SelectionTool<MeshVert
 
 	private void SelectAllVertices()
 	{
-		var vertex = GetClosestVertex( 8 );
+		var vertex = MeshTrace.GetClosestVertex( 8 );
 		if ( !vertex.IsValid() )
 			return;
 

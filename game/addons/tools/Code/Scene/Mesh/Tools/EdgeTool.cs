@@ -17,7 +17,7 @@ public sealed partial class EdgeTool( MeshTool tool ) : SelectionTool<MeshEdge>(
 
 		using var scope = Gizmo.Scope( "EdgeTool" );
 
-		var closestEdge = GetClosestEdge( 8 );
+		var closestEdge = MeshTrace.GetClosestEdge( 8 );
 		if ( closestEdge.IsValid() )
 			Gizmo.Hitbox.TrySetHovered( closestEdge.Transform.PointToWorld( closestEdge.Line.Center ) );
 
@@ -167,7 +167,7 @@ public sealed partial class EdgeTool( MeshTool tool ) : SelectionTool<MeshEdge>(
 
 	private void SelectEdgeLoop()
 	{
-		var edge = GetClosestEdge( 8 );
+		var edge = MeshTrace.GetClosestEdge( 8 );
 		if ( !edge.IsValid() )
 			return;
 
@@ -184,7 +184,7 @@ public sealed partial class EdgeTool( MeshTool tool ) : SelectionTool<MeshEdge>(
 
 	private void SelectEdge()
 	{
-		var edge = GetClosestEdge( 8 );
+		var edge = MeshTrace.GetClosestEdge( 8 );
 		if ( edge.IsValid() )
 		{
 			using ( Gizmo.Scope( "Edge Hover" ) )

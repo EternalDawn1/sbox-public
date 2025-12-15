@@ -21,8 +21,8 @@ partial class MeshTool
 
 file class MeshToolShortcutsWidget : Widget
 {
-	[Shortcut( "tools.block-tool", "Shift+B", typeof( SceneDock ) )]
-	public void ActivateBlockTool() => EditorToolManager.SetSubTool( nameof( BlockTool ) );
+	[Shortcut( "tools.primitive-tool", "Shift+B", typeof( SceneDock ) )]
+	public void ActivatePrimitiveTool() => EditorToolManager.SetSubTool( nameof( PrimitiveTool ) );
 
 	[Shortcut( "tools.vertex-tool", "1", typeof( SceneDock ) )]
 	public void ActivateVertexTool() => EditorToolManager.SetSubTool( nameof( VertexTool ) );

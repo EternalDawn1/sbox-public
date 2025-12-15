@@ -51,8 +51,6 @@ public abstract class SelectionTool<T>( MeshTool tool ) : SelectionTool where T 
 
 	protected virtual bool HasMoveMode => true;
 
-	public static Vector2 RayScreenPosition => SceneViewportWidget.MousePosition;
-
 	public static bool IsMultiSelecting => Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Ctrl ) ||
 				Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Shift );
 
@@ -510,80 +508,6 @@ public abstract class SelectionTool<T>( MeshTool tool ) : SelectionTool where T 
 		_undoScope = null;
 	}
 
-	public MeshVertex GetClosestVertex( int radius )
-	{
-		var point = RayScreenPosition;
-		var bestFace = TraceFace( out var bestHitDistance );
-		var bestVertex = bestFace.GetClosestVertex( point, radius );
-
-		if ( bestFace.IsValid() && bestVertex.IsValid() )
-			return bestVertex;
-
-		var results = TraceFaces( radius, point );
-		foreach ( var result in results )
-		{
-			var face = result.MeshFace;
-			var hitDistance = result.Distance;
-			var vertex = face.GetClosestVertex( point, radius );
-			if ( !vertex.IsValid() )
-				continue;
-
-			if ( hitDistance < bestHitDistance || !bestFace.IsValid() )
-			{
-				bestHitDistance = hitDistance;
-				bestVertex = vertex;
-				bestFace = face;
-			}
-		}
-
-		return bestVertex;
-	}
-
-	public MeshEdge GetClosestEdge( int radius )
-	{
-		var point = RayScreenPosition;
-		var bestFace = TraceFace( out var bestHitDistance );
-		var hitPosition = Gizmo.CurrentRay.Project( bestHitDistance );
-		var bestEdge = bestFace.GetClosestEdge( hitPosition, point, radius );
-
-		if ( bestFace.IsValid() && bestEdge.IsValid() )
-			return bestEdge;
-
-		var results = TraceFaces( radius, point );
-		foreach ( var result in results )
-		{
-			var face = result.MeshFace;
-			var hitDistance = result.Distance;
-			hitPosition = Gizmo.CurrentRay.Project( hitDistance );
-
-			var edge = face.GetClosestEdge( hitPosition, point, radius );
-			if ( !edge.IsValid() )
-				continue;
-
-			if ( hitDistance < bestHitDistance || !bestFace.IsValid() )
-			{
-				bestHitDistance = hitDistance;
-				bestEdge = edge;
-				bestFace = face;
-			}
-		}
-
-		return bestEdge;
-	}
-
-	private MeshFace TraceFace( out float distance )
-	{
-		distance = default;
-
-		var result = MeshTrace.Run();
-		if ( !result.Hit || result.Component is not MeshComponent component )
-			return default;
-
-		distance = result.Distance;
-		var face = component.Mesh.TriangleToFace( result.Triangle );
-		return new MeshFace( component, face );
-	}
-
 	public MeshFace TraceFace()
 	{
 		if ( IsBoxSelecting )
@@ -595,43 +519,6 @@ public abstract class SelectionTool<T>( MeshTool tool ) : SelectionTool where T 
 
 		var face = component.Mesh.TriangleToFace( result.Triangle );
 		return new MeshFace( component, face );
-	}
-
-	private struct MeshFaceTraceResult
-	{
-		public MeshFace MeshFace;
-		public float Distance;
-	}
-
-	private List<MeshFaceTraceResult> TraceFaces( int radius, Vector2 point )
-	{
-		var rays = new List<Ray> { Gizmo.CurrentRay };
-		for ( var ring = 1; ring < radius; ring++ )
-		{
-			rays.Add( Gizmo.Camera.GetRay( point + new Vector2( 0, ring ) ) );
-			rays.Add( Gizmo.Camera.GetRay( point + new Vector2( ring, 0 ) ) );
-			rays.Add( Gizmo.Camera.GetRay( point + new Vector2( 0, -ring ) ) );
-			rays.Add( Gizmo.Camera.GetRay( point + new Vector2( -ring, 0 ) ) );
-		}
-
-		var faces = new List<MeshFaceTraceResult>();
-		var faceHash = new HashSet<MeshFace>();
-		foreach ( var ray in rays )
-		{
-			var result = MeshTrace.Ray( ray, Gizmo.RayDepth ).Run();
-			if ( !result.Hit )
-				continue;
-
-			if ( result.Component is not MeshComponent component )
-				continue;
-
-			var face = component.Mesh.TriangleToFace( result.Triangle );
-			var faceElement = new MeshFace( component, face );
-			if ( faceHash.Add( faceElement ) )
-				faces.Add( new MeshFaceTraceResult { MeshFace = faceElement, Distance = result.Distance } );
-		}
-
-		return faces;
 	}
 
 	public static Vector3 ComputeTextureVAxis( Vector3 normal ) => FaceDownVectors[GetOrientationForPlane( normal )];

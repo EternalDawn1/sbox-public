@@ -110,7 +110,6 @@ public sealed partial class MeshSelection( MeshTool tool ) : SelectionTool
 
 	public override void OnEnabled()
 	{
-		Selection.Clear();
 		OnSelectionChanged();
 
 		var undo = SceneEditorSession.Active.UndoSystem;
