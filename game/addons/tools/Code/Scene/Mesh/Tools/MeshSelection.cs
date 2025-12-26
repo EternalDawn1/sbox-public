@@ -138,6 +138,35 @@ public sealed partial class MeshSelection( MeshTool tool ) : SelectionTool
 		}
 	}
 
+	public override void Nudge( Vector2 direction )
+	{
+		if ( _meshes.Length == 0 ) return;
+
+		var viewport = SceneViewWidget.Current?.LastSelectedViewportWidget;
+		if ( !viewport.IsValid() ) return;
+
+		var gizmo = viewport.GizmoInstance;
+		if ( gizmo is null ) return;
+
+		using var gizmoScope = gizmo.Push();
+		if ( Gizmo.Pressed.Any ) return;
+
+		using var scope = SceneEditorSession.Scope();
+		using var undoScope = SceneEditorSession.Active.UndoScope( "Nudge Mesh(s)" )
+			.WithGameObjectChanges( _meshes.Select( x => x.GameObject ), GameObjectUndoFlags.Properties )
+			.Push();
+
+		var rotation = CalculateSelectionBasis();
+		var delta = Gizmo.Nudge( rotation, direction );
+
+		Pivot -= delta;
+
+		foreach ( var mesh in _meshes )
+		{
+			mesh.WorldPosition -= delta;
+		}
+	}
+
 	public override BBox CalculateLocalBounds()
 	{
 		return CalculateSelectionBounds();

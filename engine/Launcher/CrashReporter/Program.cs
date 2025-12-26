@@ -1,7 +1,5 @@
 ﻿using System.Diagnostics;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text.Json;
 
 namespace CrashReporter;
 
@@ -22,21 +20,31 @@ class Program
 		var eventId = envelope.TryGetEventId();
 
 		// Submit to Sentry
-		await SentryClient.SubmitEnvelopeAsync( dsn!, envelope );
+		var sentrySubmitted = false;
+		string? sentryError = null;
+		try
+		{
+			await SentryClient.SubmitEnvelopeAsync( dsn!, envelope );
+			sentrySubmitted = true;
+		}
+		catch ( Exception ex )
+		{
+			sentryError = ex.Message;
+			Console.WriteLine( $"Failed to submit to Sentry: {ex.Message}" );
+		}
 
 		// Submit to our own API
 		var sentryEvent = envelope.TryGetEvent()?.TryParseAsJson();
-		if ( sentryEvent is null )
-			return 0;
-
-		var tags = sentryEvent["tags"];
-		var processName = sentryEvent["contexts"]?["process"]?["name"]?.GetValue<string>();
+		var tags = sentryEvent?["tags"];
+		var processName = sentryEvent?["contexts"]?["process"]?["name"]?.GetValue<string>();
 
 		var payload = new
 		{
 			sentry_event_id = eventId,
-			timestamp = sentryEvent["timestamp"],
-			version = sentryEvent["release"],
+			sentry_submitted = sentrySubmitted,
+			sentry_error = sentryError,
+			timestamp = sentryEvent?["timestamp"],
+			version = sentryEvent?["release"],
 			session_id = tags?["session_id"],
 			activity_session_id = tags?["activity_session_id"],
 			launch_guid = tags?["launch_guid"],
@@ -46,11 +54,21 @@ class Program
 			process_name = processName,
 		};
 
-		using var client = new HttpClient();
-		await client.PostAsJsonAsync( "https://services.facepunch.com/sbox/event/crash/1/", payload );
+		try
+		{
+			using var client = new HttpClient();
+			await client.PostAsJsonAsync( "https://services.facepunch.com/sbox/event/crash/1/", payload );
+		}
+		catch ( Exception ex )
+		{
+			Console.WriteLine( $"Failed to submit to Facepunch: {ex.Message}" );
+		}
 
-		// Open browser to crash report page
-		Process.Start( new ProcessStartInfo( $"https://sbox.game/crashes/{eventId}" ) { UseShellExecute = true } );
+		// Open browser to crash report page (only if Sentry has the data)
+		if ( sentrySubmitted )
+		{
+			Process.Start( new ProcessStartInfo( $"https://sbox.game/crashes/{eventId}" ) { UseShellExecute = true } );
+		}
 
 		return 0;
 	}
