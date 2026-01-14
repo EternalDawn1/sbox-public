@@ -127,7 +127,44 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         {
             if ( !BrushModeEnabled )
             {
-                SelectFace();
+                // Nur Hover-Face für Visualisierung setzen, keine Selektion
+                _hoverFace = TraceFace();
+
+                // Selektion nur beim Klicken
+                if ( Gizmo.WasLeftMousePressed )
+                {
+                    var face = _hoverFace;
+                    if ( face.IsValid() )
+                    {
+                        var mesh = face.Component.Mesh;
+                        var faceCount = mesh.FaceHandles.Count();
+                        if ( faceCount > 6 ) // Displacement mesh
+                        {
+                            if ( !Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Shift ) )
+                                Selection.Clear();
+
+                            // Get normal of the clicked face
+                            mesh.ComputeFaceNormal( face.Handle, out var clickedNormal );
+                            // Select all faces with the same normal
+                            foreach ( var handle in mesh.FaceHandles )
+                            {
+                                mesh.ComputeFaceNormal( handle, out var normal );
+                                if ( normal.Normal == clickedNormal.Normal ) // Compare normals approximately
+                                {
+                                    Selection.Add( new MeshFace( face.Component, handle ) );
+                                }
+                            }
+                        }
+                        else
+                        {
+                            UpdateSelection( face );
+                        }
+                    }
+                    else
+                    {
+                        UpdateSelection( face );
+                    }
+                }
 
                 if ( Gizmo.IsDoubleClicked )
                     SelectAllDisplacementFaces();
@@ -350,54 +387,6 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         _undoScope = null;
     }
 
-
-
-    private BBox GetFaceBounds( PolygonMesh mesh, FaceHandle face )
-    {
-        var vertices = mesh.GetFaceVertices( face );
-        var positions = vertices.Select( v => mesh.GetVertexPosition( v ) );
-        return BBox.FromPoints( positions );
-    }
-
-    private void SelectFace()
-    {
-        _hoverFace = TraceFace();
-        if (_hoverFace.IsValid())
-        {
-            var mesh = _hoverFace.Component.Mesh;
-            var faceCount = mesh.FaceHandles.Count();
-            if (faceCount > 6) // Displacement mesh
-            {
-                // Select all faces of the displacement mesh
-                foreach (var handle in mesh.FaceHandles)
-                {
-                    Selection.Add(new MeshFace(_hoverFace.Component, handle));
-                }
-            }
-            else
-            {
-                UpdateSelection(_hoverFace);
-            }
-        }
-        else
-        {
-            UpdateSelection(_hoverFace);
-        }
-    }
-
-   
-
-    private void SelectAllDisplacementFaces()
-    {
-        if ( !Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Shift ) )
-            Selection.Clear();
-
-        foreach ( var face in GetAllDisplacementFaces() )
-        {
-            Selection.Add( face );
-        }
-    }
-
     private IEnumerable<MeshFace> GetAllDisplacementFaces()
     {
         // Get all faces that have subdivision (small faces from QuadSlice)
@@ -602,6 +591,24 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
             var p2 = origin + new Vector3( MathF.Cos( angle2 ) * BrushRadius, MathF.Sin( angle2 ) * BrushRadius, 0 );
 
             Gizmo.Draw.Line( p1, p2 );
+        }
+    }
+
+    private BBox GetFaceBounds( PolygonMesh mesh, FaceHandle face )
+    {
+        var vertices = mesh.GetFaceVertices( face );
+        var positions = vertices.Select( v => mesh.GetVertexPosition( v ) );
+        return BBox.FromPoints( positions );
+    }
+
+    private void SelectAllDisplacementFaces()
+    {
+        if ( !Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Shift ) )
+            Selection.Clear();
+
+        foreach ( var face in GetAllDisplacementFaces() )
+        {
+            Selection.Add( face );
         }
     }
 }
