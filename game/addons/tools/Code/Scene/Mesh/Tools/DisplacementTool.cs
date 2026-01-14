@@ -362,7 +362,27 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     private void SelectFace()
     {
         _hoverFace = TraceFace();
-        UpdateSelection( _hoverFace );
+        if (_hoverFace.IsValid())
+        {
+            var mesh = _hoverFace.Component.Mesh;
+            var faceCount = mesh.FaceHandles.Count();
+            if (faceCount > 6) // Displacement mesh
+            {
+                // Select all faces of the displacement mesh
+                foreach (var handle in mesh.FaceHandles)
+                {
+                    Selection.Add(new MeshFace(_hoverFace.Component, handle));
+                }
+            }
+            else
+            {
+                UpdateSelection(_hoverFace);
+            }
+        }
+        else
+        {
+            UpdateSelection(_hoverFace);
+        }
     }
 
    

@@ -57,7 +57,7 @@ public sealed partial class FaceTool( MeshTool tool ) : SelectionTool<MeshFace>(
 			CreateFaceObject();
 		}
 
-		if ( Gizmo.IsHovered && (Tool.MoveMode?.AllowSceneSelection ?? true) )
+		if ( Gizmo.IsHovered && Tool.MoveMode.AllowSceneSelection )
 		{
 			SelectFace();
 
