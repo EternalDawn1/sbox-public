@@ -57,7 +57,7 @@ public sealed partial class FaceTool( MeshTool tool ) : SelectionTool<MeshFace>(
 			CreateFaceObject();
 		}
 
-		if ( Gizmo.IsHovered && Tool.MoveMode.AllowSceneSelection )
+		if ( Gizmo.IsHovered && Tool.MoveMode?.AllowSceneSelection == true )
 		{
 			SelectFace();
 
@@ -67,7 +67,7 @@ public sealed partial class FaceTool( MeshTool tool ) : SelectionTool<MeshFace>(
 
 		_faceObject.Init( Graphics.PrimitiveType.Triangles );
 
-		if ( _hoverFace.IsValid() )
+        if ( _hoverFace.IsValid() && _hoverFace.Component.Mesh is not null )
 		{
 			var hoverColor = Color.Green.WithAlpha( 0.1f );
 			var mesh = _hoverFace.Component.Mesh;
