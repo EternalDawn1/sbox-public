@@ -1,4 +1,3 @@
-
 namespace Editor.MeshEditor;
 
 partial class DisplacementTool
@@ -34,10 +33,15 @@ partial class DisplacementTool
 				
 				var brushRow = group.AddRow();
 				brushRow.Spacing = 4;
-				var brushModeControl = ControlWidget.Create( tool.GetSerialized().GetProperty( nameof( BrushModeEnabled ) ) );
-				brushModeControl.ToolTip = "Enable to paint displacement with brush, disable to select faces";
-				brushRow.Add( new Label( "Brush Mode" ) );
-				brushRow.Add( brushModeControl );
+				var brushModeButton = new Button( "Brush Mode", _tool.BrushModeEnabled ? "brush" : "pan_tool" );
+				brushModeButton.Clicked = () =>
+				{
+					_tool.BrushModeEnabled = !_tool.BrushModeEnabled;
+					brushModeButton.Icon = _tool.BrushModeEnabled ? "brush" : "pan_tool";
+					brushModeButton.Text = _tool.BrushModeEnabled ? "Brush Mode" : "Select Mode";
+				};
+				brushModeButton.ToolTip = "Toggle between brush painting and face selection";
+				brushRow.Add( brushModeButton );
 
 				var applyRow = group.AddRow();
 				applyRow.Spacing = 4;
@@ -134,21 +138,5 @@ partial class DisplacementTool
 			Layout.AddStretchCell();
 		}
 
-		[Shortcut( "editor.delete", "DEL", typeof( SceneDock ) )]
-		private void DeleteSelection()
-		{
-			var groups = _faces.GroupBy( face => face.Component );
-
-			if ( !groups.Any() )
-				return;
-
-			var components = groups.Select( x => x.Key ).ToArray();
-
-			using ( SceneEditorSession.Active.UndoScope( "Delete Faces" ).WithComponentChanges( components ).Push() )
-			{
-				foreach ( var group in groups )
-					group.Key.Mesh.RemoveFaces( group.Select( x => x.Handle ) );
-			}
-		}
 	}
 }

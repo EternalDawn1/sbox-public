@@ -34,23 +34,17 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     public enum PaintMode
     {
         [Title("Push/Pull")]
-        PushPull,
-        Flatten,
-        Smooth,
-        Inflate,
-        Pinch,
-        Clay,
-        Noise
+        PushPull
     }
 
     [Property]
     public PaintMode Mode { get; set; } = PaintMode.PushPull;
 
     [Property, Range( 0.1f, 10.0f )]
-    public float BrushRadius { get; set; } = 1.0f;
+    public float BrushRadius { get; set; } = 2.0f;
 
     [Property, Range( 0.01f, 1.0f )]
-    public float BrushStrength { get; set; } = 0.1f;
+    public float BrushStrength { get; set; } = 0.5f;
 
     private MeshFace _hoverFace;
     private SceneDynamicObject _faceObject;
@@ -174,6 +168,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         }
 
         DrawBounds();
+
+        // Draw brush gizmo if brush mode is enabled
+        if ( BrushModeEnabled )
+        {
+            DrawBrushGizmo();
+        }
     }
 
     private void HandlePainting()
@@ -350,171 +350,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         _undoScope = null;
     }
 
-    private void ApplyDisplacement( Vector3 position, IEnumerable<MeshFace> facesToPaint )
-    {
-        foreach ( var face in facesToPaint )
-        {
-            var mesh = face.Component.Mesh;
-            var transform = face.Transform;
-            var component = face.Component;
 
-            // Ensure we have a position dictionary for this component
-            if ( !_originalPositions.ContainsKey( component ) )
-            {
-                _originalPositions[component] = new Dictionary<VertexHandle, Vector3>();
-            }
-
-            // Get all vertices of the face
-            var vertices = mesh.GetFaceVertices( face.Handle );
-
-            // Get face normal once for this face
-            mesh.ComputeFaceNormal( face.Handle, out var faceNormal );
-            var worldNormal = transform.Rotation * faceNormal.Normal;
-
-            foreach ( var vertexHandle in vertices )
-            {
-                var vertexPos = mesh.GetVertexPosition( vertexHandle );
-                var worldPos = transform.PointToWorld( vertexPos );
-
-                var distance = worldPos.Distance( position );
-                if ( distance > BrushRadius ) continue;
-
-                // Store original position before first modification
-                if ( !_originalPositions[component].ContainsKey( vertexHandle ) )
-                {
-                    _originalPositions[component][vertexHandle] = vertexPos;
-                }
-
-                var falloff = 1.0f - (distance / BrushRadius);
-                falloff = MathF.Pow( falloff, 2.0f ); // Quadratic falloff
-
-                var strength = BrushStrength * falloff;
-                var direction = Gizmo.IsCtrlPressed ? -worldNormal : worldNormal;
-
-                Vector3 newPos = vertexPos;
-
-                switch ( Mode )
-                {
-                    case PaintMode.PushPull:
-                        // Ctrl inverts direction (pull instead of push)
-                        newPos = vertexPos + transform.NormalToLocal( direction ) * strength;
-                        break;
-
-                    case PaintMode.Flatten:
-                        {
-                            // Flatten back to original surface - moves vertices toward their original position
-                            var originalPos = _originalPositions[component].GetValueOrDefault( vertexHandle, vertexPos );
-                            newPos = Vector3.Lerp( vertexPos, originalPos, strength * 2.0f );
-                        }
-                        break;
-
-                    case PaintMode.Smooth:
-                        {
-                            // Smooth by averaging with neighbors
-                            var smoothed = SmoothVertexPosition( mesh, vertexHandle, strength );
-                            newPos = smoothed;
-                        }
-                        break;
-
-                    case PaintMode.Inflate:
-                        {
-                            // Push along vertex normal - Ctrl inverts
-                            var vertexNormal = GetVertexNormal( mesh, vertexHandle );
-                            var inflateDirection = Gizmo.IsCtrlPressed ? -vertexNormal : vertexNormal;
-                            newPos = vertexPos + inflateDirection * strength;
-                        }
-                        break;
-
-                    case PaintMode.Pinch:
-                        {
-                            // Pull towards brush center - Ctrl inverts (push away)
-                            var localBrushPos = transform.PointToLocal( position );
-                            var toCenter = localBrushPos - vertexPos;
-                            var pinchDirection = Gizmo.IsCtrlPressed ? -toCenter : toCenter;
-                            newPos = vertexPos + pinchDirection * strength;
-                        }
-                        break;
-
-                    case PaintMode.Clay:
-                        {
-                            // Combination of flatten and push
-                            var localBrushPos = transform.PointToLocal( position );
-                            var localNormal = transform.NormalToLocal( worldNormal );
-                            var plane = new Plane( localBrushPos, localNormal );
-                            var projected = plane.SnapToPlane( vertexPos );
-                            var flattenPos = Vector3.Lerp( vertexPos, projected, strength );
-                            var clayDirection = Gizmo.IsCtrlPressed ? -localNormal : localNormal;
-                            newPos = flattenPos + clayDirection * strength * 0.5f;
-                        }
-                        break;
-
-                    case PaintMode.Noise:
-                        {
-                            // Add random noise
-                            var seed = (int)(worldPos.x * 1000 + worldPos.y * 100 + worldPos.z * 10);
-                            var rnd = new Random( seed );
-                            var noise = new Vector3(
-                                (float)rnd.NextDouble() * 2 - 1,
-                                (float)rnd.NextDouble() * 2 - 1,
-                                (float)rnd.NextDouble() * 2 - 1
-                            );
-                            newPos = vertexPos + transform.NormalToLocal( noise ) * strength * 0.5f;
-                        }
-                        break;
-                }
-
-                mesh.SetVertexPosition( vertexHandle, newPos );
-            }
-        }
-    }
-
-    private Vector3 SmoothVertexPosition( PolygonMesh mesh, VertexHandle vertex, float strength )
-    {
-        mesh.GetEdgesConnectedToVertex( vertex, out var edges );
-        if ( edges.Count < 2 ) return mesh.GetVertexPosition( vertex );
-
-        var currentPos = mesh.GetVertexPosition( vertex );
-        var averagePos = Vector3.Zero;
-        var count = 0;
-
-        foreach ( var edge in edges )
-        {
-            mesh.GetVerticesConnectedToEdge( edge, out var v1, out var v2 );
-            var neighbor = (v1 == vertex) ? v2 : v1;
-            averagePos += mesh.GetVertexPosition( neighbor );
-            count++;
-        }
-
-        if ( count > 0 )
-        {
-            averagePos /= count;
-            return Vector3.Lerp( currentPos, averagePos, strength );
-        }
-
-        return currentPos;
-    }
-
-    private Vector3 GetVertexNormal( PolygonMesh mesh, VertexHandle vertex )
-    {
-        mesh.GetFacesConnectedToVertex( vertex, out var faces );
-        if ( faces.Count == 0 ) return Vector3.Up;
-
-        var normal = Vector3.Zero;
-        foreach ( var face in faces )
-        {
-            mesh.ComputeFaceNormal( face, out var faceNormal );
-            normal += faceNormal.Normal;
-        }
-
-        return (normal / faces.Count).Normal;
-    }
-
-    private bool IsPointInFace( PolygonMesh mesh, FaceHandle face, Vector3 localPoint )
-    {
-        // Simple bounding box check
-        var bounds = GetFaceBounds( mesh, face );
-        return bounds.Contains( localPoint );
-    }
 
     private BBox GetFaceBounds( PolygonMesh mesh, FaceHandle face )
     {
@@ -529,21 +365,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         UpdateSelection( _hoverFace );
     }
 
-    private void SelectAllFaces()
-    {
-        var face = TraceFace();
-        if ( !face.IsValid() )
-            return;
-
-        if ( !Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Shift ) )
-            Selection.Clear();
-
-        if ( !Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Ctrl ) )
-        {
-            foreach ( var hFace in face.Component.Mesh.FaceHandles )
-                Selection.Add( new MeshFace( face.Component, hFace ) );
-        }
-    }
+   
 
     private void SelectAllDisplacementFaces()
     {
@@ -633,62 +455,6 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 {
                     case PaintMode.PushPull:
                         newPos = vertexPos + transform.NormalToLocal( direction ) * strength;
-                        break;
-
-                    case PaintMode.Flatten:
-                        {
-                            var originalPos = _originalPositions[component].GetValueOrDefault( vertexHandle, vertexPos );
-                            newPos = Vector3.Lerp( vertexPos, originalPos, strength * 2.0f );
-                        }
-                        break;
-
-                    case PaintMode.Smooth:
-                        {
-                            var smoothed = SmoothVertexPosition( mesh, vertexHandle, strength );
-                            newPos = smoothed;
-                        }
-                        break;
-
-                    case PaintMode.Inflate:
-                        {
-                            var vertexNormal = GetVertexNormal( mesh, vertexHandle );
-                            var inflateDirection = Gizmo.IsCtrlPressed ? -vertexNormal : vertexNormal;
-                            newPos = vertexPos + inflateDirection * strength;
-                        }
-                        break;
-
-                    case PaintMode.Pinch:
-                        {
-                            var localBrushPos = transform.PointToLocal( position );
-                            var toCenter = localBrushPos - vertexPos;
-                            var pinchDirection = Gizmo.IsCtrlPressed ? -toCenter : toCenter;
-                            newPos = vertexPos + pinchDirection * strength;
-                        }
-                        break;
-
-                    case PaintMode.Clay:
-                        {
-                            var localBrushPos = transform.PointToLocal( position );
-                            var localNormal = transform.NormalToLocal( worldNormal );
-                            var plane = new Plane( localBrushPos, localNormal );
-                            var projected = plane.SnapToPlane( vertexPos );
-                            var flattenPos = Vector3.Lerp( vertexPos, projected, strength );
-                            var clayDirection = Gizmo.IsCtrlPressed ? -localNormal : localNormal;
-                            newPos = flattenPos + clayDirection * strength * 0.5f;
-                        }
-                        break;
-
-                    case PaintMode.Noise:
-                        {
-                            var seed = (int)(worldPos.x * 1000 + worldPos.y * 100 + worldPos.z * 10);
-                            var rnd = new Random( seed );
-                            var noise = new Vector3(
-                                (float)rnd.NextDouble() * 2 - 1,
-                                (float)rnd.NextDouble() * 2 - 1,
-                                (float)rnd.NextDouble() * 2 - 1
-                            );
-                            newPos = vertexPos + transform.NormalToLocal( noise ) * strength * 0.5f;
-                        }
                         break;
                 }
 
@@ -793,5 +559,30 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     public int GetSubdivisionLevel() => _subdivisionLevel;
 
     public void ResetSubdivisionLevel() => _subdivisionLevel = 0;
+
+    private void DrawBrushGizmo()
+    {
+        using var scope = Gizmo.Scope( "Brush Gizmo" );
+
+        Gizmo.Draw.IgnoreDepth = true;
+        Gizmo.Draw.Color = Color.Cyan.WithAlpha( 0.5f );
+        Gizmo.Draw.LineThickness = 2;
+
+        // Use a fixed origin for the circle, e.g., Vector3.Zero or camera position
+        var origin = Vector3.Zero; // Change to desired point if needed
+
+        // Draw a simple circle around the origin
+        const int segments = 32;
+        for ( int i = 0; i < segments; i++ )
+        {
+            var angle1 = (float)i / segments * MathF.PI * 2;
+            var angle2 = (float)(i + 1) / segments * MathF.PI * 2;
+
+            var p1 = origin + new Vector3( MathF.Cos( angle1 ) * BrushRadius, MathF.Sin( angle1 ) * BrushRadius, 0 );
+            var p2 = origin + new Vector3( MathF.Cos( angle2 ) * BrushRadius, MathF.Sin( angle2 ) * BrushRadius, 0 );
+
+            Gizmo.Draw.Line( p1, p2 );
+        }
+    }
 }
 
