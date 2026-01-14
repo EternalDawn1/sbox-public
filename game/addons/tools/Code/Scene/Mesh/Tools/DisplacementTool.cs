@@ -40,11 +40,11 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     [Property]
     public PaintMode Mode { get; set; } = PaintMode.PushPull;
 
-    [Property, Range( 0.1f, 10.0f )]
-    public float BrushRadius { get; set; } = 2.0f;
+    [Property, Range( 50f, 200.0f )]
+    public float BrushRadius { get; set; } = 50f;
 
-    [Property, Range( 0.01f, 1.0f )]
-    public float BrushStrength { get; set; } = 0.5f;
+    [Property, Range( 1f, 10.0f )]
+    public float BrushStrength { get; set; } = 1f;
 
     private MeshFace _hoverFace;
     private SceneDynamicObject _faceObject;
@@ -574,13 +574,14 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         using var scope = Gizmo.Scope( "Brush Gizmo" );
 
         Gizmo.Draw.IgnoreDepth = true;
+
+        // Get the position under the cursor
+        var result = MeshTrace.Run();
+        var origin = result.Hit ? result.EndPosition : Vector3.Zero;
+
+        // Outer circle for radius
         Gizmo.Draw.Color = Color.Cyan.WithAlpha( 0.5f );
         Gizmo.Draw.LineThickness = 2;
-
-        // Use a fixed origin for the circle, e.g., Vector3.Zero or camera position
-        var origin = Vector3.Zero; // Change to desired point if needed
-
-        // Draw a simple circle around the origin
         const int segments = 32;
         for ( int i = 0; i < segments; i++ )
         {
@@ -589,6 +590,21 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
             var p1 = origin + new Vector3( MathF.Cos( angle1 ) * BrushRadius, MathF.Sin( angle1 ) * BrushRadius, 0 );
             var p2 = origin + new Vector3( MathF.Cos( angle2 ) * BrushRadius, MathF.Sin( angle2 ) * BrushRadius, 0 );
+
+            Gizmo.Draw.Line( p1, p2 );
+        }
+
+        // Inner circle for strength
+        Gizmo.Draw.Color = Color.White.WithAlpha( 1.0f );
+        Gizmo.Draw.LineThickness = 2;
+        var innerRadius = Math.Max( 1.0f, BrushRadius * BrushStrength );
+        for ( int i = 0; i < segments; i++ )
+        {
+            var angle1 = (float)i / segments * MathF.PI * 2;
+            var angle2 = (float)(i + 1) / segments * MathF.PI * 2;
+
+            var p1 = origin + new Vector3( MathF.Cos( angle1 ) * innerRadius, MathF.Sin( angle1 ) * innerRadius, 0 );
+            var p2 = origin + new Vector3( MathF.Cos( angle2 ) * innerRadius, MathF.Sin( angle2 ) * innerRadius, 0 );
 
             Gizmo.Draw.Line( p1, p2 );
         }
