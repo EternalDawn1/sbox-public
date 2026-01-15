@@ -11,9 +11,6 @@ using HalfEdgeMesh;
 [Group( "3" )]
 public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<MeshFace>( tool )
 {
-    // Subdivision level (0-5, each level adds one more cut linearly)
-    private int _subdivisionLevel = 0;
-
     // Brush mode enabled for painting
     [Property]
     public bool BrushModeEnabled { get; set; } = false;
@@ -37,6 +34,20 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         PushPull
     }
 
+    public enum SubdivisionLevelEnum
+    {
+        [Title("Level 0")]
+        Level0,
+        [Title("Level 1")]
+        Level1,
+        [Title("Level 2")]
+        Level2,
+        [Title("Level 3")]
+        Level3,
+        [Title("Level 4")]
+        Level4
+    }
+
     [Property]
     public PaintMode Mode { get; set; } = PaintMode.PushPull;
 
@@ -46,12 +57,16 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     [Property, Range( 1f, 10.0f )]
     public float BrushStrength { get; set; } = 1f;
 
+    [Property]
+    public SubdivisionLevelEnum SubdivisionLevel { get; set; } = SubdivisionLevelEnum.Level0;
+
     private MeshFace _hoverFace;
     private SceneDynamicObject _faceObject;
     private bool _isPainting = false;
     private Vector3 _lastPaintPosition;
     private IDisposable _undoScope;
     private Dictionary<MeshComponent, Dictionary<VertexHandle, Vector3>> _originalPositions = new();
+    private Dictionary<MeshComponent, Dictionary<FaceHandle, int>> _faceSubdivisionLevels = new();
 
     public override void OnEnabled()
     {
@@ -210,6 +225,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         if ( BrushModeEnabled )
         {
             DrawBrushGizmo();
+        }
+
+        // Sync subdivision level
+        if ( (int)SubdivisionLevel != GetSubdivisionLevel() )
+        {
+            SetSubdivisionLevel( (int)SubdivisionLevel );
         }
     }
 
@@ -523,51 +544,74 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     // Method to add one subdivision level to selected faces (max 5 levels)
     public void AddDivision()
     {
-        if ( _subdivisionLevel >= 5 ) return;
+        var groups = Selection.OfType<MeshFace>().GroupBy(f => GetFaceLevel(f)).Where(g => g.Key < 5);
 
-        var facesToSubdivide = Selection.OfType<MeshFace>().ToList();
-        if ( facesToSubdivide.Count == 0 ) return;
-
-        var components = facesToSubdivide.GroupBy( f => f.Component );
-
-        foreach ( var group in components )
+        foreach (var group in groups)
         {
-            var mesh = group.Key.Mesh;
-            var faceHandles = group.Select( f => f.Handle ).ToArray();
+            var level = group.Key;
+            var faces = group.ToList();
+            var components = faces.GroupBy(f => f.Component);
 
-            // Linear subdivision: Level 0->1 cut, Level 1->2 cuts, Level 2->3 cuts, etc.
-            // This is much more manageable than exponential
-            var cuts = _subdivisionLevel + 1;
-
-            var newFaces = new List<FaceHandle>();
-            mesh.QuadSliceFaces( faceHandles, cuts, cuts, 5.0f, newFaces );
-
-            // Clear selection and select new faces
-            foreach ( var item in Selection.OfType<MeshFace>().Where( x => x.Component == group.Key ).ToList() )
+            foreach (var compGroup in components)
             {
-                Selection.Remove( item );
-            }
-            foreach ( var newFace in newFaces )
-            {
-                Selection.Add( new MeshFace( group.Key, newFace ) );
+                var mesh = compGroup.Key.Mesh;
+                var faceHandles = compGroup.Select(f => f.Handle).ToArray();
+                var cuts = level + 1;
+
+                var newFaces = new List<FaceHandle>();
+                mesh.QuadSliceFaces(faceHandles, cuts, cuts, 5.0f, newFaces);
+
+                // Set level for new faces
+                foreach (var newFace in newFaces)
+                {
+                    SetFaceLevel(new MeshFace(compGroup.Key, newFace), level + 1);
+                }
+
+                // Remove old faces from selection
+                foreach (var oldFace in compGroup)
+                {
+                    Selection.Remove(oldFace);
+                }
+
+                // Add new faces
+                foreach (var newFace in newFaces)
+                {
+                    Selection.Add(new MeshFace(compGroup.Key, newFace));
+                }
             }
         }
-
-        _subdivisionLevel++;
     }
 
     // Method to decrease subdivision level counter
     public void RemoveDivision()
     {
-        if ( _subdivisionLevel > 0 )
+        foreach (var face in Selection.OfType<MeshFace>())
         {
-            _subdivisionLevel--;
+            var level = GetFaceLevel(face);
+            if (level > 0)
+            {
+                SetFaceLevel(face, level - 1);
+            }
         }
     }
 
-    public int GetSubdivisionLevel() => _subdivisionLevel;
+    public int GetSubdivisionLevel() => Selection.OfType<MeshFace>().Select(f => GetFaceLevel(f)).FirstOrDefault();
 
-    public void ResetSubdivisionLevel() => _subdivisionLevel = 0;
+    public void SetSubdivisionLevel(int level)
+    {
+        foreach (var face in Selection.OfType<MeshFace>())
+        {
+            SetFaceLevel(face, level);
+        }
+    }
+
+    public void ResetSubdivisionLevel() 
+    {
+        foreach (var face in Selection.OfType<MeshFace>())
+        {
+            SetFaceLevel(face, 0);
+        }
+    }
 
     private void DrawBrushGizmo()
     {
@@ -626,6 +670,18 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         {
             Selection.Add( face );
         }
+   }
+
+    private int GetFaceLevel(MeshFace face)
+    {
+        return _faceSubdivisionLevels.GetValueOrDefault(face.Component)?.GetValueOrDefault(face.Handle) ?? 0;
+    }
+
+    private void SetFaceLevel(MeshFace face, int level)
+    {
+        if (!_faceSubdivisionLevels.ContainsKey(face.Component))
+            _faceSubdivisionLevels[face.Component] = new Dictionary<FaceHandle, int>();
+        _faceSubdivisionLevels[face.Component][face.Handle] = level;
     }
 }
 

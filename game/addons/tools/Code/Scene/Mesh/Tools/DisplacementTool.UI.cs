@@ -87,52 +87,11 @@ partial class DisplacementTool
 
 				var levelRow = group.AddRow();
 				levelRow.Spacing = 4;
-				var levelLabel = new Label( $"Level: {tool.GetSubdivisionLevel()} / 5" ) { FixedWidth = 100 };
-				levelRow.Add( levelLabel );
+				levelRow.Add( new Label( "Subdivision Level" ) );
 
-				var buttonRow = group.AddRow();
-				buttonRow.Spacing = 4;
-
-				var addButton = new Button( "Add Division", "add" );
-				addButton.Clicked = () =>
-				{
-					using var scope = SceneEditorSession.Scope();
-					using ( SceneEditorSession.Active.UndoScope( "Add Division" )
-						.WithComponentChanges( _components )
-						.Push() )
-					{
-						tool.AddDivision();
-						levelLabel.Text = $"Level: {tool.GetSubdivisionLevel()} / 5";
-					}
-				};
-				addButton.Enabled = hasSelectedFaces && tool.GetSubdivisionLevel() < 5;
-				addButton.ToolTip = "Add one subdivision level (doubles faces)";
-				buttonRow.Add( addButton );
-
-				var removeButton = new Button( "Remove Division", "remove" );
-				removeButton.Clicked = () =>
-				{
-					if ( tool.GetSubdivisionLevel() > 0 )
-					{
-						// Use undo to restore previous geometry state
-						SceneEditorSession.Active.UndoSystem.Undo();
-						tool.RemoveDivision();
-						levelLabel.Text = $"Level: {tool.GetSubdivisionLevel()} / 5";
-					}
-				};
-				removeButton.Enabled = tool.GetSubdivisionLevel() > 0;
-				removeButton.ToolTip = "Undo last subdivision (restores previous geometry)";
-				buttonRow.Add( removeButton );
-
-				var resetButton = new IconButton( "restart_alt", () =>
-				{
-					tool.ResetSubdivisionLevel();
-					levelLabel.Text = $"Level: {tool.GetSubdivisionLevel()} / 5";
-				} )
-				{
-					ToolTip = "Reset subdivision level to 0"
-				};
-				buttonRow.Add( resetButton );
+				var levelControl = ControlWidget.Create( tool.GetSerialized().GetProperty( nameof( SubdivisionLevel ) ) );
+				levelControl.Enabled = hasSelectedFaces;
+				levelRow.Add( levelControl );
 			}
 
 			Layout.AddStretchCell();
