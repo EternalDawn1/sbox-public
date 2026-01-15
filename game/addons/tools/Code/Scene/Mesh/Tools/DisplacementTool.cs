@@ -631,7 +631,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 {
                     case PaintMode.PushPull:
                         {
-                            var localDirPush = transform.Rotation.Inverse * direction;
+                            var localDirPush = transform.World.Rotation.Inverse * direction;
                             newPos = vertexPos + localDirPush * strength;
                         }
                         break;
@@ -646,20 +646,20 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                         
                     case PaintMode.Pinch:
                         var toBrushCenter = (position - worldPos).Normal;
-                        var localDirPinch = transform.Rotation.Inverse * toBrushCenter;
+                        var localDirPinch = transform.World.Rotation.Inverse * toBrushCenter;
                         newPos = vertexPos + localDirPinch * strength * 10f;
                         break;
                         
                     case PaintMode.Inflate:
                         {
-                            var localDirInflate = transform.Rotation.Inverse * direction;
+                            var localDirInflate = transform.World.Rotation.Inverse * direction;
                             newPos = vertexPos + localDirInflate * strength * 10f;
                         }
                         break;
                         
                     case PaintMode.Deflate:
                         {
-                            var localDirDeflate = transform.Rotation.Inverse * direction;
+                            var localDirDeflate = transform.World.Rotation.Inverse * direction;
                             newPos = vertexPos - localDirDeflate * strength * 10f;
                         }
                         break;
@@ -932,8 +932,8 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     
     private Vector3 ApplyFlatten( MeshComponent component, PolygonMesh mesh, GameTransform transform, VertexHandle vertexHandle, Vector3 vertexPos, Vector3 worldPos, Vector3 brushCenter, Vector3 worldNormal, float strength )
     {
-        var localNormal = transform.Rotation.Inverse * worldNormal;
-        var localBrushCenter = transform.Rotation.Inverse * (brushCenter - transform.Position);
+        var localNormal = transform.World.Rotation.Inverse * worldNormal;
+        var localBrushCenter = transform.World.Rotation.Inverse * (brushCenter - transform.World.Position);
         var distance = Vector3.Dot( vertexPos - localBrushCenter, localNormal );
         var projectedLocal = vertexPos - localNormal * distance;
         return Vector3.Lerp( vertexPos, projectedLocal, strength * 0.5f );
@@ -949,7 +949,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         var noise = MathF.Sin( noiseInput.x * 12.9898f + noiseInput.y * 78.233f + noiseInput.z * 37.719f ) * 43758.5453f;
         noise = (noise - MathF.Floor( noise )) * 2f - 1f; // -1 bis 1
         
-        var localDir = transform.Rotation.Inverse * direction;
+        var localDir = transform.World.Rotation.Inverse * direction;
         return vertexPos + localDir * noise * strength * 20f;
     }
 }
