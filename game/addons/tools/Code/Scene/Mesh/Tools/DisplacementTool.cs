@@ -1,6 +1,9 @@
 namespace Editor.MeshEditor;
 
+using Sandbox;
 using HalfEdgeMesh;
+using GameTransform = Sandbox.GameTransform;
+using Application = Editor.Application;
 
 /// <summary>
 /// Create and edit displacements on mesh faces.
@@ -31,7 +34,19 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     public enum PaintMode
     {
         [Title("Push/Pull")]
-        PushPull
+        PushPull,
+        [Title("Smooth")]
+        Smooth,
+        [Title("Flatten")]
+        Flatten,
+        [Title("Pinch")]
+        Pinch,
+        [Title("Inflate")]
+        Inflate,
+        [Title("Deflate")]
+        Deflate,
+        [Title("Noise")]
+        Noise
     }
 
     public enum SubdivisionLevelEnum
@@ -70,6 +85,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     private IDisposable _undoScope;
     private Dictionary<MeshComponent, Dictionary<VertexHandle, Vector3>> _originalPositions = new();
     private Dictionary<MeshComponent, Dictionary<FaceHandle, int>> _faceSubdivisionLevels = new();
+    
+    // Performance caching für Paint-Stroke
+    private Dictionary<MeshComponent, Dictionary<VertexHandle, Vector3>> _cachedVertexPositions = new();
+    private Dictionary<MeshComponent, Dictionary<VertexHandle, List<VertexHandle>>> _cachedNeighbors = new();
+    private List<MeshFace> _cachedAffectedFaces = new();
+    private float _noiseTime = 0f;
 
     public override void OnEnabled()
     {
@@ -145,7 +166,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         {
             if ( !BrushModeEnabled )
             {
-                // Nur Hover-Face f�r Visualisierung setzen, keine Selektion
+                // Nur Hover-Face f�r Visualisierung setzen, keine Selektion
                 _hoverFace = TraceFace();
 
                 // Selektion nur beim Klicken
@@ -423,6 +444,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
             _isPainting = true;
             _lastPaintPosition = hitPosition;
             _originalPositions.Clear();
+            
+            // Performance: Cache initialisieren
+            _cachedVertexPositions.Clear();
+            _cachedNeighbors.Clear();
+            _cachedAffectedFaces.Clear();
+            _noiseTime = (float)Random.Shared.NextDouble() * 1000f;
 
             // Create undo scope
             IEnumerable<MeshComponent> affectedComponents;
@@ -482,6 +509,11 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         }
 
         _originalPositions.Clear();
+        
+        // Performance: Caches leeren
+        _cachedVertexPositions.Clear();
+        _cachedNeighbors.Clear();
+        _cachedAffectedFaces.Clear();
 
         // Dispose undo scope to commit changes
         _undoScope?.Dispose();
@@ -513,8 +545,17 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
     private void ApplyDisplacementToNearbyFaces( Vector3 position, IEnumerable<MeshFace> availableFaces )
     {
-        // Only process faces within brush radius for performance
-        foreach ( var face in availableFaces )
+        // Performance: Cache betroffene Faces einmalig pro Stroke
+        if ( _cachedAffectedFaces.Count == 0 )
+        {
+            _cachedAffectedFaces.AddRange( availableFaces );
+        }
+        
+        // Sammle Vertices die verarbeitet werden müssen
+        var verticesToProcess = new Dictionary<MeshComponent, Dictionary<VertexHandle, (Vector3 worldPos, Vector3 localPos, Vector3 normal, float distance)>>();
+        
+        // Schritt 1: Sammle alle betroffenen Vertices (einmalig pro Frame)
+        foreach ( var face in _cachedAffectedFaces )
         {
             var mesh = face.Component.Mesh;
             var transform = face.Transform;
@@ -526,37 +567,62 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
             if ( worldCenter.Distance( position ) > BrushRadius * 2.0f )
                 continue;
 
-            // Ensure we have a position dictionary for this component
+            if ( !verticesToProcess.ContainsKey( component ) )
+            {
+                verticesToProcess[component] = new Dictionary<VertexHandle, (Vector3, Vector3, Vector3, float)>();
+            }
+            
             if ( !_originalPositions.ContainsKey( component ) )
             {
                 _originalPositions[component] = new Dictionary<VertexHandle, Vector3>();
             }
-
-            // Get all vertices of the face
-            var vertices = mesh.GetFaceVertices( face.Handle );
+            
+            if ( !_cachedVertexPositions.ContainsKey( component ) )
+            {
+                _cachedVertexPositions[component] = new Dictionary<VertexHandle, Vector3>();
+            }
 
             // Get face normal once for this face
             mesh.ComputeFaceNormal( face.Handle, out var faceNormal );
             var worldNormal = transform.Rotation * faceNormal.Normal;
-
+            
+            var vertices = mesh.GetFaceVertices( face.Handle );
             foreach ( var vertexHandle in vertices )
             {
+                if ( verticesToProcess[component].ContainsKey( vertexHandle ) )
+                    continue;
+                    
                 var vertexPos = mesh.GetVertexPosition( vertexHandle );
                 var worldPos = transform.PointToWorld( vertexPos );
-
                 var distance = worldPos.Distance( position );
+                
                 if ( distance > BrushRadius ) continue;
-
-                // Store original position before first modification
+                
+                // Store original position
                 if ( !_originalPositions[component].ContainsKey( vertexHandle ) )
                 {
                     _originalPositions[component][vertexHandle] = vertexPos;
                 }
-
+                
+                verticesToProcess[component][vertexHandle] = (worldPos, vertexPos, worldNormal, distance);
+            }
+        }
+        
+        // Schritt 2: Verarbeite Modi
+        foreach ( var componentKvp in verticesToProcess )
+        {
+            var component = componentKvp.Key;
+            var mesh = component.Mesh;
+            var transform = component.Transform;
+            
+            foreach ( var vertexKvp in componentKvp.Value )
+            {
+                var vertexHandle = vertexKvp.Key;
+                var (worldPos, vertexPos, worldNormal, distance) = vertexKvp.Value;
+                
                 var falloff = 1.0f - (distance / BrushRadius);
                 falloff = MathF.Pow( falloff, 2.0f ); // Quadratic falloff
-
-                var strength = BrushStrength * falloff;
+                var strength = BrushStrength * falloff * 0.1f; // Zeit-Faktor für smoothe Bewegung
                 var direction = Gizmo.IsCtrlPressed ? -worldNormal : worldNormal;
 
                 Vector3 newPos = vertexPos;
@@ -564,11 +630,47 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 switch ( Mode )
                 {
                     case PaintMode.PushPull:
-                        newPos = vertexPos + transform.NormalToLocal( direction ) * strength;
+                        {
+                            var localDirPush = transform.Rotation.Inverse * direction;
+                            newPos = vertexPos + localDirPush * strength;
+                        }
+                        break;
+                        
+                    case PaintMode.Smooth:
+                        newPos = ApplySmooth( component, mesh, transform, vertexHandle, vertexPos, strength );
+                        break;
+                        
+                    case PaintMode.Flatten:
+                        newPos = ApplyFlatten( component, mesh, transform, vertexHandle, vertexPos, worldPos, position, worldNormal, strength );
+                        break;
+                        
+                    case PaintMode.Pinch:
+                        var toBrushCenter = (position - worldPos).Normal;
+                        var localDirPinch = transform.Rotation.Inverse * toBrushCenter;
+                        newPos = vertexPos + localDirPinch * strength * 10f;
+                        break;
+                        
+                    case PaintMode.Inflate:
+                        {
+                            var localDirInflate = transform.Rotation.Inverse * direction;
+                            newPos = vertexPos + localDirInflate * strength * 10f;
+                        }
+                        break;
+                        
+                    case PaintMode.Deflate:
+                        {
+                            var localDirDeflate = transform.Rotation.Inverse * direction;
+                            newPos = vertexPos - localDirDeflate * strength * 10f;
+                        }
+                        break;
+                        
+                    case PaintMode.Noise:
+                        newPos = ApplyNoise( component, mesh, transform, vertexHandle, vertexPos, worldPos, direction, strength );
                         break;
                 }
 
                 mesh.SetVertexPosition( vertexHandle, newPos );
+                _cachedVertexPositions[component][vertexHandle] = newPos;
             }
         }
     }
@@ -624,39 +726,36 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     // Method to add one subdivision level to selected faces (max 5 levels)
     public void AddDivision()
     {
-        var groups = Selection.OfType<MeshFace>().GroupBy(f => GetFaceLevel(f)).Where(g => g.Key < 5);
+        var groups = Selection.OfType<MeshFace>().GroupBy( f => GetFaceLevel( f ) ).Where( g => g.Key < 5 );
 
-        foreach (var group in groups)
+        foreach ( var group in groups )
         {
             var level = group.Key;
             var faces = group.ToList();
-            var components = faces.GroupBy(f => f.Component);
+            var components = faces.GroupBy( f => f.Component );
 
-            foreach (var compGroup in components)
+            foreach ( var compGroup in components )
             {
                 var mesh = compGroup.Key.Mesh;
-                var faceHandles = compGroup.Select(f => f.Handle).ToArray();
+                var faceHandles = compGroup.Select( f => f.Handle ).ToArray();
                 var cuts = level + 1;
 
                 var newFaces = new List<FaceHandle>();
-                mesh.QuadSliceFaces(faceHandles, cuts, cuts, 5.0f, newFaces);
+                mesh.QuadSliceFaces( faceHandles, cuts, cuts, 5.0f, newFaces );
 
-                // Set level for new faces
-                foreach (var newFace in newFaces)
+                foreach ( var newFace in newFaces )
                 {
-                    SetFaceLevel(new MeshFace(compGroup.Key, newFace), level + 1);
+                    SetFaceLevel( new MeshFace( compGroup.Key, newFace ), level + 1 );
                 }
 
-                // Remove old faces from selection
-                foreach (var oldFace in compGroup)
+                foreach ( var oldFace in compGroup )
                 {
-                    Selection.Remove(oldFace);
+                    Selection.Remove( oldFace );
                 }
 
-                // Add new faces
-                foreach (var newFace in newFaces)
+                foreach ( var newFace in newFaces )
                 {
-                    Selection.Add(new MeshFace(compGroup.Key, newFace));
+                    Selection.Add( new MeshFace( compGroup.Key, newFace ) );
                 }
             }
         }
@@ -665,12 +764,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     // Method to decrease subdivision level counter
     public void RemoveDivision()
     {
-        foreach (var face in Selection.OfType<MeshFace>())
+        foreach ( var face in Selection.OfType<MeshFace>() )
         {
-            var level = GetFaceLevel(face);
-            if (level > 0)
+            var level = GetFaceLevel( face );
+            if ( level > 0 )
             {
-                SetFaceLevel(face, level - 1);
+                SetFaceLevel( face, level - 1 );
             }
         }
     }
@@ -775,6 +874,83 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         if (!_faceSubdivisionLevels.ContainsKey(face.Component))
             _faceSubdivisionLevels[face.Component] = new Dictionary<FaceHandle, int>();
         _faceSubdivisionLevels[face.Component][face.Handle] = level;
+    }
+    
+    private Vector3 ApplySmooth( MeshComponent component, PolygonMesh mesh, GameTransform transform, VertexHandle vertexHandle, Vector3 vertexPos, float strength )
+    {
+        // Cache neighbors
+        if ( !_cachedNeighbors.ContainsKey( component ) )
+        {
+            _cachedNeighbors[component] = new Dictionary<VertexHandle, List<VertexHandle>>();
+        }
+        
+        if ( !_cachedNeighbors[component].ContainsKey( vertexHandle ) )
+        {
+            // Finde Nachbarn über Face-Connectivity
+            var neighbors = new HashSet<VertexHandle>();
+            
+            foreach ( var faceHandle in mesh.FaceHandles )
+            {
+                var faceVerts = mesh.GetFaceVertices( faceHandle ).ToList();
+                if ( faceVerts.Contains( vertexHandle ) )
+                {
+                    // Alle anderen Vertices in diesem Face sind Nachbarn
+                    foreach ( var v in faceVerts )
+                    {
+                        if ( !v.Equals( vertexHandle ) )
+                            neighbors.Add( v );
+                    }
+                }
+            }
+            
+            _cachedNeighbors[component][vertexHandle] = neighbors.ToList();
+        }
+        
+        var neighborList = _cachedNeighbors[component][vertexHandle];
+        if ( neighborList.Count == 0 )
+            return vertexPos;
+        
+        // Berechne Durchschnittsposition der Nachbarn
+        var avgPos = Vector3.Zero;
+        foreach ( var neighbor in neighborList )
+        {
+            // Nutze gecachte Position wenn verfügbar, sonst hole aktuelle
+            if ( _cachedVertexPositions.ContainsKey( component ) && _cachedVertexPositions[component].ContainsKey( neighbor ) )
+            {
+                avgPos += _cachedVertexPositions[component][neighbor];
+            }
+            else
+            {
+                avgPos += mesh.GetVertexPosition( neighbor );
+            }
+        }
+        avgPos /= neighborList.Count;
+        
+        // Interpoliere zwischen aktueller Position und Durchschnitt
+        return Vector3.Lerp( vertexPos, avgPos, strength );
+    }
+    
+    private Vector3 ApplyFlatten( MeshComponent component, PolygonMesh mesh, GameTransform transform, VertexHandle vertexHandle, Vector3 vertexPos, Vector3 worldPos, Vector3 brushCenter, Vector3 worldNormal, float strength )
+    {
+        var localNormal = transform.Rotation.Inverse * worldNormal;
+        var localBrushCenter = transform.Rotation.Inverse * (brushCenter - transform.Position);
+        var distance = Vector3.Dot( vertexPos - localBrushCenter, localNormal );
+        var projectedLocal = vertexPos - localNormal * distance;
+        return Vector3.Lerp( vertexPos, projectedLocal, strength * 0.5f );
+    }
+    
+    private Vector3 ApplyNoise( MeshComponent component, PolygonMesh mesh, GameTransform transform, VertexHandle vertexHandle, Vector3 vertexPos, Vector3 worldPos, Vector3 direction, float strength )
+    {
+        // Simplex/Perlin-like noise mit Vertex-Position als Seed
+        var noiseScale = 0.1f;
+        var noiseInput = (worldPos + new Vector3( _noiseTime, 0, 0 )) * noiseScale;
+        
+        // Einfaches Pseudo-Noise (3D)
+        var noise = MathF.Sin( noiseInput.x * 12.9898f + noiseInput.y * 78.233f + noiseInput.z * 37.719f ) * 43758.5453f;
+        noise = (noise - MathF.Floor( noise )) * 2f - 1f; // -1 bis 1
+        
+        var localDir = transform.Rotation.Inverse * direction;
+        return vertexPos + localDir * noise * strength * 20f;
     }
 }
 
