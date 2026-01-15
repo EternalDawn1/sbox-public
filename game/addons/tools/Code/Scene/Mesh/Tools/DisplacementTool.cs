@@ -261,8 +261,19 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
             }
             else if ( targetLevel < currentLevelNow )
             {
-                // Just set the level (geometry stays)
-                SetSubdivisionLevel( targetLevel );
+                // Remove divisions until we reach target level
+                while ( GetSubdivisionLevel() > targetLevel )
+                {
+                    SceneEditorSession.Active.UndoSystem.Undo();
+                    RemoveDivision();
+                }
+
+                // Rebuild meshes after undoing subdivisions
+                var affectedComponents = Scene.GetAllComponents<MeshComponent>().Where( m => m.IsValid() ).ToArray();
+                foreach ( var component in affectedComponents )
+                {
+                    component.RebuildMesh();
+                }
             }
 
             _lastSubdivisionLevel = SubdivisionLevel;
