@@ -250,18 +250,18 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
             if ( targetLevel > currentLevelNow )
             {
-                using var undoScope = SceneEditorSession.Scope();
-                using ( SceneEditorSession.Active.UndoScope( "Add Subdivision" )
-                    .WithComponentChanges( Scene.GetAllComponents<MeshComponent>().ToArray() )
-                    .Push() )
+                // Add divisions until we reach target level
+                while ( GetSubdivisionLevel() < targetLevel )
                 {
-                    // Add divisions until we reach target level
-                    while ( GetSubdivisionLevel() < targetLevel )
+                    using var undoScope = SceneEditorSession.Scope();
+                    using ( SceneEditorSession.Active.UndoScope( "Add Subdivision" )
+                        .WithComponentChanges( Scene.GetAllComponents<MeshComponent>().ToArray() )
+                        .Push() )
                     {
                         AddDivision();
                     }
 
-                    // Rebuild meshes after adding subdivisions
+                    // Rebuild meshes after each subdivision
                     var affectedComponents = Scene.GetAllComponents<MeshComponent>().Where( m => m.IsValid() ).ToArray();
                     foreach ( var component in affectedComponents )
                     {
@@ -275,6 +275,9 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                         component.RebuildMesh();
                     }
                 }
+
+                // Ensure stored levels match the requested target
+                SetSubdivisionLevel( targetLevel );
             }
             else if ( targetLevel < currentLevelNow )
             {
@@ -282,23 +285,15 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 int steps = currentLevelNow - targetLevel;
                 for ( int i = 0; i < steps; i++ )
                 {
-                    // Check if the last action was a subdivision to safely undo
-                    if ( SceneEditorSession.Active != null && SceneEditorSession.Active.UndoSystem.Back.TryPeek( out var lastAction ) && lastAction.Name == "Add Subdivision" )
-                    {
-                        SceneEditorSession.Active.UndoSystem.Undo();
-                    }
-                    else
-                    {
-                        // Fallback: manually decrement level if undo isn't the right action
-                        RemoveDivision();
-                    }
+                    SceneEditorSession.Active.UndoSystem.Undo();
+                    RemoveDivision();
                 }
 
-                // Rebuild meshes to ensure rendering is correct and UVs are updated
+                // Rebuild meshes after undoing subdivisions
                 var affectedComponents = Scene.GetAllComponents<MeshComponent>().Where( m => m.IsValid() ).ToArray();
                 foreach ( var component in affectedComponents )
                 {
-                    // Recompute UVs for all faces to fix distortion after geometry changes
+                    // Recompute UVs for all faces
                     var facesToUpdate = component.Mesh.FaceHandles.ToArray();
                     if ( facesToUpdate.Length > 0 )
                     {
@@ -307,9 +302,15 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
                     component.RebuildMesh();
                 }
+
+                // Ensure stored levels match the requested target after undo operations
+                SetSubdivisionLevel( targetLevel );
             }
 
+            // Keep UI and tracking in sync with the applied target level
+            SubdivisionLevel = (SubdivisionLevelEnum)targetLevel;
             _lastSubdivisionLevel = SubdivisionLevel;
+            _lastSelectionCount = Selection.Count;
         }
     }
 
@@ -465,15 +466,14 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         var affectedComponents = _originalPositions.Keys.ToArray();
         foreach ( var component in affectedComponents )
         {
-            // Identify all faces that were deformed by this stroke to fix UV stretching
-            var movedVertices = _originalPositions[component].Keys.ToHashSet();
-            var facesToUpdate = component.Mesh.FaceHandles
-                .Where( f => component.Mesh.GetFaceVertices( f ).Any( v => movedVertices.Contains( v ) ) )
+            // Recompute UVs for all affected faces to fix distortion
+            var facesToUpdate = Selection.OfType<MeshFace>()
+                .Where( f => f.Component == component )
+                .Select( f => f.Handle )
                 .ToArray();
 
             if ( facesToUpdate.Length > 0 )
             {
-                // Recompute UVs for all affected regular and subdivided faces
                 component.Mesh.ComputeFaceTextureCoordinatesFromParameters( facesToUpdate );
             }
 
@@ -677,8 +677,17 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
     public int GetSubdivisionLevel()
     {
-        if ( Selection.Count == 0 ) return 0;
-        return Selection.OfType<MeshFace>().Select( f => GetFaceLevel( f ) ).Max();
+        var levels = Selection.OfType<MeshFace>().Select(f => GetFaceLevel(f)).ToArray();
+        if ( levels.Length == 0 ) return 0;
+
+        // Return the most common subdivision level among the selection.
+        // In case of a tie prefer the higher level so the UI doesn't jump to 0
+        return levels
+            .GroupBy( l => l )
+            .OrderByDescending( g => g.Count() )
+            .ThenByDescending( g => g.Key )
+            .First()
+            .Key;
     }
 
     public void SetSubdivisionLevel(int level)
