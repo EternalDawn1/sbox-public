@@ -60,6 +60,9 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     [Property]
     public SubdivisionLevelEnum SubdivisionLevel { get; set; } = SubdivisionLevelEnum.Level0;
 
+    private SubdivisionLevelEnum _lastSubdivisionLevel = SubdivisionLevelEnum.Level0;
+    private int _lastSelectionCount = 0;
+
     private MeshFace _hoverFace;
     private SceneDynamicObject _faceObject;
     private bool _isPainting = false;
@@ -227,10 +230,42 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
             DrawBrushGizmo();
         }
 
-        // Sync subdivision level
-        if ( (int)SubdivisionLevel != GetSubdivisionLevel() )
+        // Sync subdivision level from selection to UI
+        if ( Selection.Count != _lastSelectionCount )
         {
-            SetSubdivisionLevel( (int)SubdivisionLevel );
+            _lastSelectionCount = Selection.Count;
+            int currentLevel = GetSubdivisionLevel();
+            SubdivisionLevel = (SubdivisionLevelEnum)currentLevel;
+            _lastSubdivisionLevel = SubdivisionLevel;
+        }
+
+        // Check if user changed the level via UI
+        if ( SubdivisionLevel != _lastSubdivisionLevel )
+        {
+            int targetLevel = (int)SubdivisionLevel;
+            int currentLevelNow = GetSubdivisionLevel();
+
+            if ( targetLevel > currentLevelNow )
+            {
+                using var undoScope = SceneEditorSession.Scope();
+                using ( SceneEditorSession.Active.UndoScope( "Add Subdivision" )
+                    .WithComponentChanges( Scene.GetAllComponents<MeshComponent>().ToArray() )
+                    .Push() )
+                {
+                    // Add divisions until we reach target level
+                    while ( GetSubdivisionLevel() < targetLevel )
+                    {
+                        AddDivision();
+                    }
+                }
+            }
+            else if ( targetLevel < currentLevelNow )
+            {
+                // Just set the level (geometry stays)
+                SetSubdivisionLevel( targetLevel );
+            }
+
+            _lastSubdivisionLevel = SubdivisionLevel;
         }
     }
 

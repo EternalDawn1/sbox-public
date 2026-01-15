@@ -91,6 +91,7 @@ partial class DisplacementTool
 
 				var levelControl = ControlWidget.Create( tool.GetSerialized().GetProperty( nameof( SubdivisionLevel ) ) );
 				levelControl.Enabled = hasSelectedFaces;
+				
 				levelRow.Add( levelControl );
 			}
 
