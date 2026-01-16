@@ -97,8 +97,6 @@ public partial class EdgeCutTool( string tool ) : EditorTool
 
 	readonly string _tool = tool;
 	bool _cancel;
-	bool _snappingEnabled = EditorCookie.Get( "edgecut_snapping", true );
-	bool _showSnappingInfo = EditorCookie.Get( "edgecut_showinfo", true );
 
 	public override void OnDisabled()
 	{
@@ -111,7 +109,7 @@ public partial class EdgeCutTool( string tool ) : EditorTool
 		if ( escape && !_cancel ) Cancel();
 		_cancel = escape;
 
-		_previewCutPoint = _snappingEnabled ? FindSnappedCutPoint() : FindCutPoint();
+		_previewCutPoint = ShouldSnap() ? FindSnappedCutPoint() : FindCutPoint();
 
 		MeshCutPoint previousCutPoint = default;
 		if ( _cutPoints.Count > 0 )
