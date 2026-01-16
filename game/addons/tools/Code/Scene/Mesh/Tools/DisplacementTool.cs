@@ -126,6 +126,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         _faceObject = null;
 
         _hoverFace = default;
+
+        // Re-enable move mode if it was disabled for brush mode
+        if ( Tool.MoveMode == null )
+        {
+            Tool.SetMoveMode<PositionMode>();
+        }
     }
 
     public override void OnUpdate()
@@ -184,11 +190,13 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
                             // Get normal of the clicked face
                             mesh.ComputeFaceNormal( face.Handle, out var clickedNormal );
-                            // Select all faces with the same normal
+                            // Select all faces on the same side (based on dominant axis and sign)
+                            var dominantAxis = GetDominantAxis( clickedNormal.Normal );
+                            var sign = MathF.Sign( clickedNormal.Normal[dominantAxis] );
                             foreach ( var handle in mesh.FaceHandles )
                             {
                                 mesh.ComputeFaceNormal( handle, out var normal );
-                                if ( normal.Normal == clickedNormal.Normal ) // Compare normals approximately
+                                if ( GetDominantAxis( normal.Normal ) == dominantAxis && MathF.Sign( normal.Normal[dominantAxis] ) == sign )
                                 {
                                     Selection.Add( new MeshFace( face.Component, handle ) );
                                 }
@@ -855,12 +863,16 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
     private void SelectAllDisplacementFaces()
     {
+        var face = TraceFace();
+        if ( !face.IsValid() )
+            return;
+
         if ( !Application.KeyboardModifiers.HasFlag( KeyboardModifiers.Shift ) )
             Selection.Clear();
 
-        foreach ( var face in GetAllDisplacementFaces() )
+        foreach ( var hFace in face.Component.Mesh.FaceHandles )
         {
-            Selection.Add( face );
+            Selection.Add( new MeshFace( face.Component, hFace ) );
         }
    }
 
@@ -951,6 +963,16 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         
         var localDir = transform.World.Rotation.Inverse * direction;
         return vertexPos + localDir * noise * strength * 2f;
+    }
+
+    private int GetDominantAxis( Vector3 normal )
+    {
+        var absX = MathF.Abs( normal.x );
+        var absY = MathF.Abs( normal.y );
+        var absZ = MathF.Abs( normal.z );
+        if ( absX > absY && absX > absZ ) return 0; // X-axis
+        if ( absY > absZ ) return 1; // Y-axis
+        return 2; // Z-axis
     }
 }
 
