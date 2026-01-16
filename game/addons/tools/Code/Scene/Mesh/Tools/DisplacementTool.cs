@@ -622,7 +622,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 
                 var falloff = 1.0f - (distance / BrushRadius);
                 falloff = MathF.Pow( falloff, 2.0f ); // Quadratic falloff
-                var strength = BrushStrength * falloff * 0.1f; // Zeit-Faktor für smoothe Bewegung
+                var strength = BrushStrength * falloff;
                 var direction = Gizmo.IsCtrlPressed ? -worldNormal : worldNormal;
 
                 Vector3 newPos = vertexPos;
@@ -647,20 +647,20 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                     case PaintMode.Pinch:
                         var toBrushCenter = (position - worldPos).Normal;
                         var localDirPinch = transform.World.Rotation.Inverse * toBrushCenter;
-                        newPos = vertexPos + localDirPinch * strength * 10f;
+                        newPos = vertexPos + localDirPinch * strength;
                         break;
                         
                     case PaintMode.Inflate:
                         {
                             var localDirInflate = transform.World.Rotation.Inverse * direction;
-                            newPos = vertexPos + localDirInflate * strength * 10f;
+                            newPos = vertexPos + localDirInflate * strength;
                         }
                         break;
                         
                     case PaintMode.Deflate:
                         {
                             var localDirDeflate = transform.World.Rotation.Inverse * direction;
-                            newPos = vertexPos - localDirDeflate * strength * 10f;
+                            newPos = vertexPos - localDirDeflate * strength;
                         }
                         break;
                         
@@ -950,7 +950,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         noise = (noise - MathF.Floor( noise )) * 2f - 1f; // -1 bis 1
         
         var localDir = transform.World.Rotation.Inverse * direction;
-        return vertexPos + localDir * noise * strength * 20f;
+        return vertexPos + localDir * noise * strength * 2f;
     }
 }
 
