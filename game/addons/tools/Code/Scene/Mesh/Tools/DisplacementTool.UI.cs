@@ -75,6 +75,13 @@ partial class DisplacementTool
 					r.Add( ControlWidget.Create( tool.GetSerialized().GetProperty( nameof( Mode ) ) ) );
 				}
 
+				{
+					var r = group.AddRow();
+					r.Spacing = 4;
+					r.Add( new Label( "Constrain to Selected" ) );
+					r.Add( ControlWidget.Create( tool.GetSerialized().GetProperty( nameof( ConstrainToSelectedFaces ) ) ) );
+				}
+
 				// Add hint about Ctrl modifier
 				var hintRow = group.AddRow();
 				hintRow.Spacing = 4;

@@ -75,6 +75,9 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     [Property]
     public SubdivisionLevelEnum SubdivisionLevel { get; set; } = SubdivisionLevelEnum.Level0;
 
+    [Property]
+    public bool ConstrainToSelectedFaces { get; set; } = false;
+
     private SubdivisionLevelEnum _lastSubdivisionLevel = SubdivisionLevelEnum.Level0;
     private int _lastSelectionCount = 0;
 
@@ -605,6 +608,21 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 var distance = worldPos.Distance( position );
                 
                 if ( distance > BrushRadius ) continue;
+
+                // If constraining to selected faces, only include vertices that are only on selected faces
+                if ( ConstrainToSelectedFaces )
+                {
+                    List<FaceHandle> connectedFaces;
+                    if ( mesh.GetFacesConnectedToVertex( vertexHandle, out connectedFaces ) )
+                    {
+                        var selectedFaceHandles = Selection.OfType<MeshFace>()
+                            .Where( f => f.Component == component )
+                            .Select( f => f.Handle )
+                            .ToHashSet();
+                        if ( !connectedFaces.All( fh => selectedFaceHandles.Contains( fh ) ) )
+                            continue;
+                    }
+                }
                 
                 // Store original position
                 if ( !_originalPositions[component].ContainsKey( vertexHandle ) )
