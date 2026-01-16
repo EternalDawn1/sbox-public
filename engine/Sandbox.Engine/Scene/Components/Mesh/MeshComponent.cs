@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Collections.Generic;
 using static Sandbox.Component;
 using static Sandbox.ModelRenderer;
 
@@ -74,7 +75,10 @@ public sealed class MeshComponent : Collider, ExecuteInEditor, ITintable, IMater
 		}
 	}
 
-	[Property, Order( 4 )]
+	[Expose, Property, Order( 4 ), Hide]
+	public Dictionary<int, int> SubdivisionLevels { get; set; } = new();
+
+	[Property, Order( 5 )]
 	public bool HideInGame
 	{
 		get;
@@ -300,5 +304,23 @@ public sealed class MeshComponent : Collider, ExecuteInEditor, ITintable, IMater
 		_sceneObject.Tags.SetFrom( GameObject.Tags );
 		_sceneObject.ColorTint = Color;
 		_sceneObject.Flags.CastShadows = RenderType == ShadowRenderType.On || RenderType == ShadowRenderType.ShadowsOnly;
+	}
+
+	public int GetSubdivisionLevel(int faceIndex)
+	{
+		return SubdivisionLevels.TryGetValue(faceIndex, out var level) ? level : 0;
+	}
+
+	public void SetSubdivisionLevel(int faceIndex, int level)
+	{
+		if (level <= 0)
+			SubdivisionLevels.Remove(faceIndex);
+		else
+			SubdivisionLevels[faceIndex] = level;
+	}
+
+	public void RemoveSubdivisionLevel(int faceIndex)
+	{
+		SubdivisionLevels.Remove(faceIndex);
 	}
 }

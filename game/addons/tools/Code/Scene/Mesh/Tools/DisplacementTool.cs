@@ -87,7 +87,6 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
     private Vector3 _lastPaintPosition;
     private IDisposable _undoScope;
     private Dictionary<MeshComponent, Dictionary<VertexHandle, Vector3>> _originalPositions = new();
-    private Dictionary<MeshComponent, Dictionary<FaceHandle, int>> _faceSubdivisionLevels = new();
     
     // Performance caching für Paint-Stroke
     private Dictionary<MeshComponent, Dictionary<VertexHandle, Vector3>> _cachedVertexPositions = new();
@@ -277,13 +276,13 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         // Check if user changed the level via UI
         if ( SubdivisionLevel != _lastSubdivisionLevel )
         {
-            int targetLevel = (int)SubdivisionLevel;
+            int target_level = (int)SubdivisionLevel;
             int currentLevelNow = GetSubdivisionLevel();
 
-            if ( targetLevel > currentLevelNow )
+            if ( target_level > currentLevelNow )
             {
                 // Add divisions until we reach target level
-                while ( GetSubdivisionLevel() < targetLevel )
+                while ( GetSubdivisionLevel() < target_level )
                 {
                     using var undoScope = SceneEditorSession.Scope();
                     using ( SceneEditorSession.Active.UndoScope( "Add Subdivision" )
@@ -309,12 +308,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 }
 
                 // Ensure stored levels match the requested target
-                SetSubdivisionLevel( targetLevel );
+                SetSubdivisionLevel( target_level );
             }
-            else if ( targetLevel < currentLevelNow )
+            else if ( target_level < currentLevelNow )
             {
                 // Remove divisions until we reach target level
-                int steps = currentLevelNow - targetLevel;
+                int steps = currentLevelNow - target_level;
                 for ( int i = 0; i < steps; i++ )
                 {
                     SceneEditorSession.Active.UndoSystem.Undo();
@@ -336,11 +335,11 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
                 }
 
                 // Ensure stored levels match the requested target after undo operations
-                SetSubdivisionLevel( targetLevel );
+                SetSubdivisionLevel( target_level );
             }
 
             // Keep UI and tracking in sync with the applied target level
-            SubdivisionLevel = (SubdivisionLevelEnum)targetLevel;
+            SubdivisionLevel = (SubdivisionLevelEnum)target_level;
             _lastSubdivisionLevel = SubdivisionLevel;
             _lastSelectionCount = Selection.Count;
         }
@@ -425,7 +424,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
             {
                 // Check if point is inside face bounds (simple AABB check)
                 var localPos = transform.PointToLocal( pos );
-                var bounds = GetFaceBounds( mesh, face.Handle );
+                var bounds = getFaceBounds( mesh, face.Handle );
                 if ( bounds.Contains( localPos ) )
                 {
                     hit = true;
@@ -762,18 +761,34 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
             foreach ( var compGroup in components )
             {
-                var mesh = compGroup.Key.Mesh;
+                var component = compGroup.Key;
+                var mesh = component.Mesh;
                 var faceHandles = compGroup.Select( f => f.Handle ).ToArray();
                 var cuts = level + 1;
+
+                // Store the current subdivision levels before slicing
+                var oldLevels = new Dictionary<int, int>();
+                foreach ( var face in compGroup )
+                {
+                    oldLevels[face.Handle.Index] = GetFaceLevel( face );
+                }
 
                 var newFaces = new List<FaceHandle>();
                 mesh.QuadSliceFaces( faceHandles, cuts, cuts, 5.0f, newFaces );
 
-                foreach ( var newFace in newFaces )
+                // Clear old subdivision levels for faces that no longer exist
+                foreach ( var oldIndex in oldLevels.Keys )
                 {
-                    SetFaceLevel( new MeshFace( compGroup.Key, newFace ), level + 1 );
+                    component.SubdivisionLevels.Remove( oldIndex );
                 }
 
+                // Set new subdivision levels for all new faces
+                foreach ( var newFace in newFaces )
+                {
+                    SetFaceLevel( new MeshFace( component, newFace ), level + 1 );
+                }
+
+                // Update selection
                 foreach ( var oldFace in compGroup )
                 {
                     Selection.Remove( oldFace );
@@ -781,7 +796,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
                 foreach ( var newFace in newFaces )
                 {
-                    Selection.Add( new MeshFace( compGroup.Key, newFace ) );
+                    Selection.Add( new MeshFace( component, newFace ) );
                 }
             }
         }
@@ -872,7 +887,7 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
         }
     }
 
-    private BBox GetFaceBounds( PolygonMesh mesh, FaceHandle face )
+    private BBox getFaceBounds( PolygonMesh mesh, FaceHandle face )
     {
         var vertices = mesh.GetFaceVertices( face );
         var positions = vertices.Select( v => mesh.GetVertexPosition( v ) );
@@ -896,14 +911,12 @@ public sealed partial class DisplacementTool( MeshTool tool ) : SelectionTool<Me
 
     private int GetFaceLevel(MeshFace face)
     {
-        return _faceSubdivisionLevels.GetValueOrDefault(face.Component)?.GetValueOrDefault(face.Handle) ?? 0;
+        return face.Component.SubdivisionLevels.GetValueOrDefault(face.Handle.Index, 0);
     }
 
     private void SetFaceLevel(MeshFace face, int level)
     {
-        if (!_faceSubdivisionLevels.ContainsKey(face.Component))
-            _faceSubdivisionLevels[face.Component] = new Dictionary<FaceHandle, int>();
-        _faceSubdivisionLevels[face.Component][face.Handle] = level;
+        face.Component.SubdivisionLevels[face.Handle.Index] = level;
     }
     
     private Vector3 ApplySmooth( MeshComponent component, PolygonMesh mesh, GameTransform transform, VertexHandle vertexHandle, Vector3 vertexPos, float strength )
